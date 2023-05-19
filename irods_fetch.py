@@ -11,7 +11,7 @@ from irods.models import Collection
 aparser = argparse.ArgumentParser(
     prog = 'irods-fetch',
     description = 'LIMS utility for downloading collection of files from iRODS cloud',
-    epilog = 'Text at the bottom of help'
+    epilog = ''
 )
 
 aparser.add_argument("--ticket", "-t", dest="ticket", help="Access ticket")
@@ -28,6 +28,8 @@ arguments = aparser.parse_args()
 
 # Extract zone from the collection argument (first path part)
 arguments.zone = arguments.collection_path.parents[-2].stem 
+
+# Open iRODS session
 with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user, password=arguments.password, zone=arguments.zone) as irods_session:
     
     # -------- grent ticket
@@ -47,13 +49,22 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
     
     #irods_session.query()
     collection = irods_session.collections.get(str(arguments.collection_path))
-    print("Successfully connected to irods, starting file downloads...")
-    total_files = len(collection.data_objects)
+    print(f"Connected to iRODS, starting file downloads from the collection {collection.path}...")
+
+    def walk_collection(collection: iRODSCollection):
+        for subcol in collection.subcollections:
+            yield from walk_collection(subcol) # Recurse into subcollections
+        
+        for dobj in collection.data_objects:
+            yield dobj
+
+    data_objects = list(walk_collection(collection))
+    total_files = len(data_objects)
     current_file = 0
 
     # Download collection files
-    for data_obj in collection.data_objects:
-        target_path: pathlib.Path = arguments.output_dir / data_obj.name
+    for data_obj in data_objects:
+        target_path: pathlib.Path = arguments.output_dir / pathlib.Path(data_obj.path).relative_to(arguments.collection_path) 
 
         # Check if file already exists and has same size as collection file
         # In that case, skip it
@@ -66,10 +77,16 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
                 continue
             else: 
                 target_path.unlink(missing_ok=True)
+        
+        # Ensure directory exists for the target file
+        if not target_path.parent.is_dir():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Download the file
         print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...")
         irods_session.data_objects.get(data_obj.path, str(target_path))
         current_file = current_file + 1
+
+# iRODS session closed
 
 print(f"Successfully downloaded collection: {arguments.collection_path}")
