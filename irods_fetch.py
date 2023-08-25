@@ -9,16 +9,15 @@ from irods.ticket import Ticket
 
 aparser = argparse.ArgumentParser(
     prog = 'irods-fetch',
-    description = 'LIMS utility for downloading collection of files from iRODS cloud',
-    epilog = ''
+    description = 'LIMS utility for downloading collection of files from iRODS cloud'
 )
 
 aparser.add_argument("--ticket", "-t", dest="ticket", help="Access ticket")
 
 aparser.add_argument("--host", required=True, dest="host", help="iRODS host")
-aparser.add_argument("--port", "-p", dest="port", type=int, default="1247", help="iRODS port")
-aparser.add_argument("--user", "-u", dest="user", default="anonymous", help="iRODS user")
-aparser.add_argument("--password", "-P", dest="password", default="", help="iRODS user password")
+aparser.add_argument("--port", "-p", dest="port", type=int, default="1247", help="iRODS port, defaults to 1247")
+aparser.add_argument("--user", "-u", dest="user", default="anonymous", help="iRODS user, defaults to 'anonymous'")
+aparser.add_argument("--password", "-P", dest="password", default="", help="iRODS user password, defaults to empty password")
 
 aparser.add_argument("--collection", "-c", required=True, dest="collection_path", type=pathlib.Path, help="Collection path")
 aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path, default=pathlib.Path("."))
