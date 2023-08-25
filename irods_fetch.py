@@ -3,10 +3,9 @@
 
 import argparse, pathlib
 
-from irods.collection import iRODSCollection, iRODSDataObject
+from irods.collection import iRODSCollection
 from irods.session import iRODSSession
 from irods.ticket import Ticket
-from irods.models import Collection
 
 aparser = argparse.ArgumentParser(
     prog = 'irods-fetch',
@@ -27,7 +26,7 @@ aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path,
 arguments = aparser.parse_args()
 
 # Extract zone from the collection argument (first path part)
-arguments.zone = arguments.collection_path.parents[-2].stem 
+arguments.zone = arguments.collection_path.parts[1] 
 
 # Open iRODS session
 with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user, password=arguments.password, zone=arguments.zone) as irods_session:
