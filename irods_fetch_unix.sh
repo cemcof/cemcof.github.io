@@ -11,10 +11,10 @@ fi
 
 # Execute downloader from url
 python_script_url="https://raw.githubusercontent.com/cemcof/cemcof.github.io/main/irods_fetch.py"
-temp_file=$(mktemp)
-curl -sSfL -o "$temp_file" "$python_script_url"
-python3 "$temp_file" $@ 
-rm "$temp_file"
+curl -fL $python_script_url | python3 - $@
 
-# Or simpler?
-# curl -fL $python_script_url | python3 - $@
+# Alternative: 
+# temp_file=$(mktemp)
+# curl -sSfL -o "$temp_file" "$python_script_url"
+# python3 "$temp_file" $@ 
+# rm "$temp_file"

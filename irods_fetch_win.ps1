@@ -28,10 +28,11 @@ if (-not (python3 -c "import irods" 2>&1)) {
 # Download and invoke the downloader script 
 $scriptUrl = "https://raw.githubusercontent.com/cemcof/cemcof.github.io/main/irods_fetch.py"
 $pythonScript = (Invoke-WebRequest -Uri $scriptUrl).Content
-python3 -c $pythonScript 
+$pythonScript | python3 - 
+
 
 # Or rather save it to tempfile first? 
-#  $scriptTempPath = [System.IO.Path]::GetTempFileName() + ".py"
-#  $pythonScript | Set-Content -Path $scriptTempPath
-#  python3 $scriptTempPath
-#  Remove-Item -Path $scriptTempPath -Force
+# $scriptTempPath = [System.IO.Path]::GetTempFileName() + ".py"
+# $pythonScript | Set-Content -Path $scriptTempPath
+# python3 $scriptTempPath
+# Remove-Item -Path $scriptTempPath -Force
