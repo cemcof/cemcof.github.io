@@ -7,6 +7,17 @@ from irods.collection import iRODSCollection
 from irods.session import iRODSSession
 from irods.ticket import Ticket
 
+import time
+
+# Utility to convert file size to huma readable format
+def sizeof_fmt(num, suffix="B"):
+    for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Yi{suffix}"
+
+
 aparser = argparse.ArgumentParser(
     prog = 'irods-fetch',
     description = 'LIMS utility for downloading collection of files from iRODS cloud'
@@ -81,8 +92,12 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Download the file
-        print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...")
+        print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='')
+        start = time.time()
         irods_session.data_objects.get(data_obj.path, str(target_path))
+        duration_sec = time.time() - start
+        size = sizeof_fmt(target_path.stat().st_size)
+        print(f" done, {duration_sec:.2f} sec, {size}")
         current_file = current_file + 1
 
 # iRODS session closed
