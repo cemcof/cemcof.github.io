@@ -92,7 +92,7 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Download the file
-        print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='')
+        print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='', flush=True)
         start = time.time()
         irods_session.data_objects.get(data_obj.path, str(target_path))
         duration_sec = time.time() - start
