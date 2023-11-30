@@ -2,14 +2,10 @@
 # iRODS collection downloader 
 
 import argparse, pathlib
-import tempfile
 
 from irods.collection import iRODSCollection
 from irods.session import iRODSSession
 from irods.ticket import Ticket
-import re
-
-import urllib3
 
 aparser = argparse.ArgumentParser(
     prog = 'irods-fetch',
@@ -26,36 +22,17 @@ aparser.add_argument("--password", "-P", dest="password", default="", help="iROD
 aparser.add_argument("--collection", "-c", required=True, dest="collection_path", type=pathlib.Path, help="Collection path")
 aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path, default=pathlib.Path("."))
 
-# Cert / Auth
-aparser.add_argument("--authentication_scheme", dest="authentication_scheme", type=str, default="PAM")
-aparser.add_argument("--ssl_verify_server", dest="ssl_verify_server", type=str, default="cert")
-aparser.add_argument("--ssl_ca_certification_file", dest="ssl_ca_certification_file", type=str, default="https://pki.cesnet.cz/_media/certs/chain_geant_ov_rsa_ca_4_full.pem")
-aparser.add_argument("--encryoption_algorithm", dest="encryoption_algorithm", type=str, default="AES-256-CBC")
-aparser.add_argument("--encryption_key_size", dest="encryption_key_size", type=int, default=32)
-aparser.add_argument("--encryption_num_hash_rounds", dest="encryption_num_hash_rounds", type=int, default=16)
-aparser.add_argument("--encryption_salt_size", dest="encryption_salt_size", type=int, default=8)
-
 arguments = aparser.parse_args()
-
-# Resolve SSL file - can be url 
-if arguments.ssl_ca_certification_file and re.match(r'^https?://', arguments.ssl_ca_certification_file):
-    # Its url - download it to temporary file
-    with urllib3.request.urlopen(arguments.ssl_ca_certification_file) as response:
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            # Write the content of the URL to the temporary file
-            temp_file.write(response.read())
-            arguments.ssl_ca_certification_file = temp_file.name
 
 # Extract zone from the collection argument (first path part)
 arguments.zone = arguments.collection_path.parts[1] 
 
 # Open iRODS session
-with iRODSSession(**arguments) as irods_session:
+with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user, password=arguments.password, zone=arguments.zone) as irods_session:
     
     # -------- grent ticket
-    new_t = Ticket(irods_session)
-    new_t.issue("read", arguments.collection_path)
+    # new_t = Ticket(irods_session)
+    # new_t.issue("read", arguments.collection_path)
     # print(new_t.string)
     # exit()
     # -------
@@ -64,13 +41,12 @@ with iRODSSession(**arguments) as irods_session:
     if arguments.ticket:
         Ticket(irods_session, arguments.ticket).supply()
         # collection = iRODSCollection(irods_session.collections, irods_session.query(Collection).one())
-        #irods_session.query()
     #else:
     #    collection = irods_session.collections.get(arguments.collection_path)
 
     
+    #irods_session.query()
     collection = irods_session.collections.get(str(arguments.collection_path))
-
     print(f"Connected to iRODS, starting file downloads from the collection {collection.path}...")
 
     def walk_collection(collection: iRODSCollection):
