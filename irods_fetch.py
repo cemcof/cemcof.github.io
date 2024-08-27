@@ -32,6 +32,7 @@ aparser.add_argument("--password", "-P", dest="password", default="", help="iROD
 
 aparser.add_argument("--collection", "-c", required=True, dest="collection_path", type=pathlib.Path, help="Collection path")
 aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path, default=pathlib.Path("."))
+aparser.add_argument("--sleep_time", "-s", dest="sleep_time", type=float, default=20, help="Sleep time in seconds between scans, defaults to 20 sec")
 
 arguments = aparser.parse_args()
 
@@ -51,12 +52,7 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
     # Supply the access ticket, if any 
     if arguments.ticket:
         Ticket(irods_session, arguments.ticket).supply()
-        # collection = iRODSCollection(irods_session.collections, irods_session.query(Collection).one())
-    #else:
-    #    collection = irods_session.collections.get(arguments.collection_path)
-
-    
-    #irods_session.query()
+       
     collection = irods_session.collections.get(str(arguments.collection_path))
     print(f"Connected to iRODS, starting file downloads from the collection {collection.path}...")
 
@@ -67,39 +63,38 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
         for dobj in collection.data_objects:
             yield dobj
 
-    data_objects = list(walk_collection(collection))
-    total_files = len(data_objects)
-    current_file = 0
+    print("Scanning files, may take several seconds...")
 
-    # Download collection files
-    for data_obj in data_objects:
-        target_path: pathlib.Path = arguments.output_dir / pathlib.Path(data_obj.path).relative_to(arguments.collection_path) 
+    while True:
+        data_objects = list(walk_collection(collection))
+        current_file = 0
 
-        # Check if file already exists and has same size as collection file
-        # In that case, skip it
-        if target_path.exists():
-            # File already there - does it have the same size?
-            if target_path.stat().st_size == data_obj.size:
-                # Skip - it is already downloaded
-                print(f"[{current_file+1}/{total_files}] Skipped file {target_path} - already downloaded")
-                current_file = current_file + 1
-                continue
-            else: 
+        to_download = []
+
+        # Scan collection files
+        for data_obj in data_objects:
+            target_path: pathlib.Path = arguments.output_dir / pathlib.Path(data_obj.path).relative_to(arguments.collection_path) 
+            if not target_path.exists() or target_path.stat().st_size != data_obj.size:
+                to_download.append((target_path, data_obj))
+
+        # Download collection files
+        total_files = len(to_download)
+        for target_path, data_obj in to_download:
+            if target_path.exists():
                 target_path.unlink(missing_ok=True)
-        
-        # Ensure directory exists for the target file
-        if not target_path.parent.is_dir():
-            target_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Download the file
-        print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='', flush=True)
-        start = time.time()
-        irods_session.data_objects.get(data_obj.path, str(target_path))
-        duration_sec = time.time() - start
-        size = sizeof_fmt(target_path.stat().st_size)
-        print(f" done, {duration_sec:.2f} sec, {size}")
-        current_file = current_file + 1
+            # Ensure directory exists for the target file
+            if not target_path.parent.is_dir():
+                target_path.parent.mkdir(parents=True)
 
-# iRODS session closed
+            # Download the file
+            print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='', flush=True)
+            start = time.time()
+            irods_session.data_objects.get(data_obj.path, str(target_path))
+            duration_sec = time.time() - start
+            size = sizeof_fmt(target_path.stat().st_size)
+            print(f" done, {duration_sec:.2f} sec, {size}")
+            current_file = current_file + 1
 
-print(f"Successfully downloaded collection: {arguments.collection_path}")
+        print("Dataset downloaded, waiting for new files... If none expected, Ctrl+C to exit")    
+        time.sleep(arguments.sleep_time)
