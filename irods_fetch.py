@@ -30,7 +30,7 @@ aparser.add_argument("--port", "-p", dest="port", type=int, default="1247", help
 aparser.add_argument("--user", "-u", dest="user", default="anonymous", help="iRODS user, defaults to 'anonymous'")
 aparser.add_argument("--password", "-P", dest="password", default="", help="iRODS user password, defaults to empty password")
 
-aparser.add_argument("--collection", "-c", required=True, dest="collection_path", type=pathlib.Path, help="Collection path")
+aparser.add_argument("--collection", "-c", required=True, dest="collection_path", type=pathlib.PurePosixPath, help="Collection path")
 aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path, default=pathlib.Path("."))
 aparser.add_argument("--sleep_time", "-s", dest="sleep_time", type=float, default=20, help="Sleep time in seconds between scans, defaults to 20 sec")
 
