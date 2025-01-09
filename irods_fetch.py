@@ -81,7 +81,7 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
         total_files = len(to_download)
         for target_path, data_obj in to_download:
             if target_path.exists():
-                target_path.unlink(missing_ok=True)
+                target_path.unlink()
 
             # Ensure directory exists for the target file
             if not target_path.parent.is_dir():
