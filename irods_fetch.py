@@ -2,6 +2,8 @@
 # iRODS collection downloader 
 
 import argparse, pathlib
+import datetime
+from datetime import timezone
 
 from irods.collection import iRODSCollection
 from irods.session import iRODSSession
@@ -32,6 +34,7 @@ aparser.add_argument("--password", "-P", dest="password", default="", help="iROD
 
 aparser.add_argument("--collection", "-c", required=True, dest="collection_path", type=pathlib.PurePosixPath, help="Collection path")
 aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path, default=pathlib.Path("."))
+aparser.add_argument("--file_wait_secs", dest="file_wait_secs", type=float, default=60.0, help="Make sure file is not changed in source for given number of seconds, only then download it")
 aparser.add_argument("--sleep_time", "-s", dest="sleep_time", type=float, default=20, help="Sleep time in seconds between scans, defaults to 20 sec")
 
 arguments = aparser.parse_args()
@@ -73,9 +76,13 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
 
         # Scan collection files
         for data_obj in data_objects:
-            target_path: pathlib.Path = arguments.output_dir / pathlib.Path(data_obj.path).relative_to(arguments.collection_path) 
+            target_path: pathlib.Path = arguments.output_dir / pathlib.Path(data_obj.path).relative_to(arguments.collection_path)
             if not target_path.exists() or target_path.stat().st_size != data_obj.size:
-                to_download.append((target_path, data_obj))
+                # Check if file is ready to be downloaded (not modified for enough time
+                mod_utc = data_obj.modify_time.replace(tzinfo=timezone.utc)
+                now_utc = datetime.datetime.now(timezone.utc)
+                if (now_utc - mod_utc).total_seconds() > arguments.file_wait_secs:
+                    to_download.append((target_path, data_obj))
 
         # Download collection files
         total_files = len(to_download)
