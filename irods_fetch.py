@@ -76,7 +76,7 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
 
         # Scan collection files
         for data_obj in data_objects:
-            target_path: pathlib.Path = arguments.output_dir / pathlib.Path(data_obj.path).relative_to(arguments.collection_path)
+            target_path: pathlib.Path = arguments.output_dir / pathlib.PurePosixPath(data_obj.path).relative_to(arguments.collection_path)
             if not target_path.exists() or target_path.stat().st_size != data_obj.size:
                 # Check if file is ready to be downloaded (not modified for enough time
                 mod_utc = data_obj.modify_time.replace(tzinfo=timezone.utc)
