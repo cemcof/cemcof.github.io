@@ -36,6 +36,7 @@ aparser.add_argument("--collection", "-c", required=True, dest="collection_path"
 aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path, default=pathlib.Path("."))
 aparser.add_argument("--file_wait_secs", dest="file_wait_secs", type=float, default=60.0, help="Make sure file is not changed in source for given number of seconds, only then download it")
 aparser.add_argument("--sleep_time", "-s", dest="sleep_time", type=float, default=20, help="Sleep time in seconds between scans, defaults to 20 sec")
+aparser.add_argument("--skip-errs", dest="skip_errs", type=bool, default=True, help="If a file fails to download, dont terminate and try other files")
 
 arguments = aparser.parse_args()
 
@@ -96,11 +97,19 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
 
             # Download the file
             print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='', flush=True)
-            start = time.time()
-            irods_session.data_objects.get(data_obj.path, str(target_path))
-            duration_sec = time.time() - start
-            size = sizeof_fmt(target_path.stat().st_size)
-            print(f" done, {duration_sec:.2f} sec, {size}")
+
+            try:
+                start = time.time()
+                irods_session.data_objects.get(data_obj.path, str(target_path))
+                duration_sec = time.time() - start
+                size = sizeof_fmt(target_path.stat().st_size)
+                print(f" done, {duration_sec:.2f} sec, {size}")
+            except Exception as e:
+                if arguments.skip_errs:
+                    print(f"Failed to download file {str(target_path)}, error {e}")
+                else:
+                    raise
+
             current_file = current_file + 1
 
         print("Dataset downloaded, waiting for new files... If none expected, Ctrl+C to exit")    
