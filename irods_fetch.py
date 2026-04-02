@@ -4,6 +4,7 @@
 import argparse, pathlib
 import datetime
 from datetime import timezone
+import fnmatch
 
 from irods.collection import iRODSCollection
 from irods.session import iRODSSession
@@ -37,6 +38,7 @@ aparser.add_argument("--output_dir", "-o", dest="output_dir", type=pathlib.Path,
 aparser.add_argument("--file_wait_secs", dest="file_wait_secs", type=float, default=60.0, help="Make sure file is not changed in source for given number of seconds, only then download it")
 aparser.add_argument("--sleep_time", "-s", dest="sleep_time", type=float, default=20, help="Sleep time in seconds between scans, defaults to 20 sec")
 aparser.add_argument("--skip-errs", dest="skip_errs", type=bool, default=True, help="If a file fails to download, dont terminate and try other files")
+aparser.add_argument("--file-pattern", dest="file_pattern", default=None, help="Only download files matching this glob pattern (e.g. '*.mrc' or 'Raw/Grid/*')")
 
 arguments = aparser.parse_args()
 
@@ -59,6 +61,8 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
        
     collection = irods_session.collections.get(str(arguments.collection_path))
     print(f"Connected to iRODS, starting file downloads from the collection {collection.path}...")
+    if arguments.file_pattern:
+        print(f"Applying file pattern filter: {arguments.file_pattern}")
 
     def walk_collection(collection: iRODSCollection):
         for subcol in collection.subcollections:
@@ -77,7 +81,11 @@ with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user,
 
         # Scan collection files
         for data_obj in data_objects:
-            target_path: pathlib.Path = arguments.output_dir / collection.name / pathlib.PurePosixPath(data_obj.path).relative_to(arguments.collection_path)
+            relative_path = pathlib.PurePosixPath(data_obj.path).relative_to(arguments.collection_path)
+            if arguments.file_pattern and not fnmatch.fnmatch(str(relative_path), arguments.file_pattern):
+                continue
+
+            target_path: pathlib.Path = arguments.output_dir / collection.name / relative_path
             if not target_path.exists() or target_path.stat().st_size != data_obj.size:
                 # Check if file is ready to be downloaded (not modified for enough time
                 mod_utc = data_obj.modify_time.replace(tzinfo=timezone.utc)
