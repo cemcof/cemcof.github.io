@@ -10,7 +10,19 @@ from irods.collection import iRODSCollection
 from irods.session import iRODSSession
 from irods.ticket import Ticket
 
-import time
+import time, signal, threading, sys
+
+# Graceful cancellation: the first Ctrl+C lets the file being downloaded finish, a second one aborts immediately
+stop_event = threading.Event()
+downloading = False
+
+def handle_sigint(signum, frame):
+    if stop_event.is_set() or not downloading:
+        raise KeyboardInterrupt
+    stop_event.set()
+    print("\nCancellation requested, finishing the current file download first (press Ctrl+C again to abort immediately)...", flush=True)
+
+signal.signal(signal.SIGINT, handle_sigint)
 
 # Utility to convert file size to huma readable format
 def sizeof_fmt(num, suffix="B"):
@@ -45,80 +57,109 @@ arguments = aparser.parse_args()
 # Extract zone from the collection argument (first path part)
 arguments.zone = arguments.collection_path.parts[1] 
 
-# Open iRODS session
-with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user, password=arguments.password, zone=arguments.zone) as irods_session:
+current_target = None
+
+def run():
+    global downloading, current_target
+
+    # Open iRODS session
+    with iRODSSession(port=arguments.port, host=arguments.host, user=arguments.user, password=arguments.password, zone=arguments.zone) as irods_session:
     
-    # -------- grent ticket
-    # new_t = Ticket(irods_session)
-    # new_t.issue("read", arguments.collection_path)
-    # print(new_t.string)
-    # exit()
-    # -------
+        # -------- grent ticket
+        # new_t = Ticket(irods_session)
+        # new_t.issue("read", arguments.collection_path)
+        # print(new_t.string)
+        # exit()
+        # -------
 
-    # Supply the access ticket, if any 
-    if arguments.ticket:
-        Ticket(irods_session, arguments.ticket).supply()
+        # Supply the access ticket, if any 
+        if arguments.ticket:
+            Ticket(irods_session, arguments.ticket).supply()
        
-    collection = irods_session.collections.get(str(arguments.collection_path))
-    print(f"Connected to iRODS, starting file downloads from the collection {collection.path}...")
-    if arguments.file_pattern:
-        print(f"Applying file pattern filter: {arguments.file_pattern}")
+        collection = irods_session.collections.get(str(arguments.collection_path))
+        print(f"Connected to iRODS, starting file downloads from the collection {collection.path}...")
+        if arguments.file_pattern:
+            print(f"Applying file pattern filter: {arguments.file_pattern}")
 
-    def walk_collection(collection: iRODSCollection):
-        for subcol in collection.subcollections:
-            yield from walk_collection(subcol) # Recurse into subcollections
+        def walk_collection(collection: iRODSCollection):
+            for subcol in collection.subcollections:
+                yield from walk_collection(subcol) # Recurse into subcollections
         
-        for dobj in collection.data_objects:
-            yield dobj
+            for dobj in collection.data_objects:
+                yield dobj
 
-    print("Scanning files, may take several seconds...")
+        print("Scanning files, may take several seconds...")
 
-    while True:
-        data_objects = list(walk_collection(collection))
-        current_file = 0
+        while True:
+            data_objects = list(walk_collection(collection))
+            current_file = 0
 
-        to_download = []
+            to_download = []
 
-        # Scan collection files
-        for data_obj in data_objects:
-            relative_path = pathlib.PurePosixPath(data_obj.path).relative_to(arguments.collection_path)
-            if arguments.file_pattern and not fnmatch.fnmatch(str(relative_path), arguments.file_pattern):
-                continue
+            # Scan collection files
+            for data_obj in data_objects:
+                relative_path = pathlib.PurePosixPath(data_obj.path).relative_to(arguments.collection_path)
+                if arguments.file_pattern and not fnmatch.fnmatch(str(relative_path), arguments.file_pattern):
+                    continue
 
-            target_path: pathlib.Path = arguments.output_dir / collection.name / relative_path
-            if not target_path.exists() or target_path.stat().st_size != data_obj.size:
-                # Check if file is ready to be downloaded (not modified for enough time
-                mod_utc = data_obj.modify_time.replace(tzinfo=timezone.utc)
-                now_utc = datetime.datetime.now(timezone.utc)
-                if (now_utc - mod_utc).total_seconds() > arguments.file_wait_secs:
-                    to_download.append((target_path, data_obj))
+                target_path: pathlib.Path = arguments.output_dir / collection.name / relative_path
+                if not target_path.exists() or target_path.stat().st_size != data_obj.size:
+                    # Check if file is ready to be downloaded (not modified for enough time
+                    mod_utc = data_obj.modify_time.replace(tzinfo=timezone.utc)
+                    now_utc = datetime.datetime.now(timezone.utc)
+                    if (now_utc - mod_utc).total_seconds() > arguments.file_wait_secs:
+                        to_download.append((target_path, data_obj))
 
-        # Download collection files
-        total_files = len(to_download)
-        for target_path, data_obj in to_download:
-            if target_path.exists():
-                target_path.unlink()
+            # Download collection files
+            total_files = len(to_download)
+            for target_path, data_obj in to_download:
+                if target_path.exists():
+                    target_path.unlink()
 
-            # Ensure directory exists for the target file
-            if not target_path.parent.is_dir():
-                target_path.parent.mkdir(parents=True)
+                # Ensure directory exists for the target file
+                if not target_path.parent.is_dir():
+                    target_path.parent.mkdir(parents=True)
 
-            # Download the file
-            print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='', flush=True)
+                # Download the file
+                print(f"[{current_file+1}/{total_files}] Downloading file {str(target_path)}...", end='', flush=True)
 
-            try:
-                start = time.time()
-                irods_session.data_objects.get(data_obj.path, str(target_path))
-                duration_sec = time.time() - start
-                size = sizeof_fmt(target_path.stat().st_size)
-                print(f" done, {duration_sec:.2f} sec, {size}")
-            except Exception as e:
-                if arguments.skip_errs:
-                    print(f"Failed to download file {str(target_path)}, error {e}")
-                else:
-                    raise
+                try:
+                    current_target = target_path
+                    downloading = True
+                    start = time.time()
+                    irods_session.data_objects.get(data_obj.path, str(target_path))
+                    downloading = False
+                    duration_sec = time.time() - start
+                    size = sizeof_fmt(target_path.stat().st_size)
+                    print(f" done, {duration_sec:.2f} sec, {size}")
+                except Exception as e:
+                    downloading = False
+                    if arguments.skip_errs:
+                        print(f"Failed to download file {str(target_path)}, error {e}")
+                    else:
+                        raise
 
-            current_file = current_file + 1
+                current_file = current_file + 1
+                if stop_event.is_set():
+                    break
 
-        print("Dataset downloaded, waiting for new files... If none expected, Ctrl+C to exit")    
-        time.sleep(arguments.sleep_time)
+            if stop_event.is_set():
+                break
+
+            print("Dataset downloaded, waiting for new files... If none expected, Ctrl+C to exit")
+            stop_event.wait(arguments.sleep_time)
+
+if __name__ == "__main__":
+    try:
+        run()
+    except KeyboardInterrupt:
+        # Forced abort - remove the half-downloaded file, if any
+        if downloading and current_target is not None and current_target.exists():
+            current_target.unlink()
+            print(f"\nAborted, removed incomplete file {current_target}")
+        else:
+            print("\nAborted by user.")
+        sys.exit(130)
+
+    if stop_event.is_set():
+        print("Cancelled by user, last file was downloaded completely.")
